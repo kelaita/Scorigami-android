@@ -1,0 +1,16 @@
+# Local/build
+.gradle/
+build/
+app/build/
+local.properties
+
+# IDE
+.idea/
+
+# Signing secrets
+keystore.properties
+*.jks
+*.keystore
+
+# OS
+.DS_Store
