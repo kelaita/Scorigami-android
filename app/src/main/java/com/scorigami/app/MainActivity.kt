@@ -8,6 +8,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.Canvas
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -31,11 +34,13 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.Image
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -51,9 +56,12 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -72,7 +80,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
@@ -83,12 +90,15 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewModelScope
 import com.scorigami.app.ui.theme.ScorigamiTheme
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
 import java.net.URL
 import kotlin.math.ceil
 import kotlin.math.floor
+import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 
@@ -386,6 +396,7 @@ private fun ScorigamiApp() {
     val vm: ScorigamiViewModel = viewModel()
     var showAbout by remember { mutableStateOf(false) }
     var selectedScore by remember { mutableStateOf<ScoreDetails?>(null) }
+    var resetRequestId by remember { mutableIntStateOf(0) }
 
     if (vm.uiState.isLoading) {
         LoadingScreen()
@@ -436,6 +447,7 @@ private fun ScorigamiApp() {
                 uiState = vm.uiState,
                 onGradientChange = vm::setGradientType,
                 onToggleColorMap = vm::toggleColorMapType,
+                onResetView = { resetRequestId += 1 },
                 minLegend = vm.getMinLegendValue(),
                 maxLegend = vm.getMaxLegendValue()
             )
@@ -460,6 +472,7 @@ private fun ScorigamiApp() {
                 else -> {
                     HeatmapView(
                         uiState = vm.uiState,
+                        resetRequestId = resetRequestId,
                         onCellTapped = { cell ->
                             selectedScore = vm.toScoreDetails(cell)
                         },
@@ -499,8 +512,20 @@ private fun LoadingScreen() {
 @Composable
 private fun ScoreSheet(details: ScoreDetails, onDismiss: () -> Unit) {
     val context = LocalContext.current
-    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = Color(0xFF171717)) {
-        Column(modifier = Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    val scroll = rememberScrollState()
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = Color(0xE84A4A4A),
+        scrimColor = Color.Black.copy(alpha = 0.45f)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(scroll)
+                .padding(horizontal = 20.dp)
+                .padding(top = 8.dp, bottom = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
             Text(
                 text = details.score,
                 color = Color.White,
@@ -516,15 +541,23 @@ private fun ScoreSheet(details: ScoreDetails, onDismiss: () -> Unit) {
                     fontSize = 18.sp,
                     fontWeight = FontWeight.SemiBold
                 )
-                Text(text = "Most recent game", color = Color(0xFFB0B0B0), fontSize = 14.sp)
-                Text(text = details.lastGame, color = Color.White, fontSize = 16.sp)
+                Text(text = "Most recent game:", color = Color(0xFFB0B0B0), fontSize = 14.sp)
+                Text(
+                    text = details.lastGame,
+                    color = Color.White,
+                    fontSize = 16.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
                 Button(
                     onClick = {
                         runCatching {
                             context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(details.gamesUrl)))
                         }
                     },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 6.dp)
                 ) {
                     Text("View games")
                 }
@@ -532,11 +565,11 @@ private fun ScoreSheet(details: ScoreDetails, onDismiss: () -> Unit) {
                 Text(text = "SCORIGAMI!", color = Color(0xFFFFA500), fontSize = 24.sp, fontWeight = FontWeight.Black)
                 Text(text = "No game has ever ended with this score...yet.", color = Color.White, fontSize = 18.sp)
             }
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             OutlinedButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) {
                 Text("Done")
             }
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(4.dp))
         }
     }
 }
@@ -545,6 +578,7 @@ private fun ScoreSheet(details: ScoreDetails, onDismiss: () -> Unit) {
 @Composable
 private fun HeatmapView(
     uiState: ScorigamiUiState,
+    resetRequestId: Int,
     onCellTapped: (BoardCell) -> Unit,
     getCellColor: (BoardCell) -> Color,
     getCellTextColor: (BoardCell) -> Color
@@ -557,6 +591,13 @@ private fun HeatmapView(
 
     var scale by remember { mutableFloatStateOf(1f) }
     var panOffset by remember { mutableStateOf(Offset.Zero) }
+    val scope = rememberCoroutineScope()
+    var viewportAnimationJob by remember { mutableStateOf<Job?>(null) }
+    var panMomentumJob by remember { mutableStateOf<Job?>(null) }
+    var lastGestureAtMs by remember { mutableLongStateOf(0L) }
+    var panDeltaPerEvent by remember { mutableStateOf(Offset.Zero) }
+    var lastGestureZoomFactor by remember { mutableFloatStateOf(1f) }
+    val inertiaProgress = remember { Animatable(1f) }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         val plotWidthPx = with(density) { (maxWidth - axisWidth).toPx().coerceAtLeast(1f) }
@@ -578,25 +619,102 @@ private fun HeatmapView(
             panOffset = clampOffset(panOffset, scale)
         }
 
+        fun animateViewport(targetScale: Float, targetOffset: Offset, durationMs: Long = 650L) {
+            viewportAnimationJob?.cancel()
+            viewportAnimationJob = scope.launch {
+                val startScale = scale
+                val startOffset = panOffset
+                val frames = 40
+                val step = max(1L, durationMs / frames)
+                repeat(frames + 1) { i ->
+                    val t = i / frames.toFloat()
+                    val eased = t * t * (3f - 2f * t)
+                    val s = startScale + (targetScale - startScale) * eased
+                    val o = Offset(
+                        x = startOffset.x + (targetOffset.x - startOffset.x) * eased,
+                        y = startOffset.y + (targetOffset.y - startOffset.y) * eased
+                    )
+                    scale = s
+                    panOffset = clampOffset(o, s)
+                    if (i < frames) delay(step)
+                }
+                scale = targetScale
+                panOffset = clampOffset(targetOffset, targetScale)
+                viewportAnimationJob = null
+            }
+        }
+
+        LaunchedEffect(resetRequestId) {
+            if (resetRequestId > 0) {
+                animateViewport(1f, Offset.Zero, durationMs = 560L)
+            }
+        }
+
         Canvas(
             modifier = Modifier
                 .fillMaxSize()
                 .pointerInput(uiState.board) {
                     detectTransformGestures { centroid, pan, zoom, _ ->
+                        viewportAnimationJob?.cancel()
+                        panMomentumJob?.cancel()
                         val oldScale = scale
                         val newScale = (scale * zoom).coerceIn(1f, 9f)
                         val focusX = centroid.x - with(density) { axisWidth.toPx() }
                         val focusY = centroid.y - with(density) { topAxisHeight.toPx() }
-                        val contentX = (focusX - panOffset.x) / max(oldScale, 0.0001f)
-                        val contentY = (focusY - panOffset.y) / max(oldScale, 0.0001f)
-                        val moved = panOffset + pan
-                        val scaled = Offset(
-                            x = focusX - contentX * newScale,
-                            y = focusY - contentY * newScale
-                        )
-                        val blended = Offset((moved.x + scaled.x) / 2f, (moved.y + scaled.y) / 2f)
+                        val focus = Offset(focusX, focusY)
+                        val scaleRatio = newScale / max(oldScale, 0.0001f)
+                        // Anchor zoom to finger centroid, then apply pan delta.
+                        val scaled = focus - ((focus - panOffset) * scaleRatio)
+                        val translated = scaled + pan
                         scale = newScale
-                        panOffset = clampOffset(blended, scale)
+                        panOffset = clampOffset(translated, scale)
+                        val now = android.os.SystemClock.uptimeMillis()
+                        val panMag = hypot(pan.x.toDouble(), pan.y.toDouble()).toFloat()
+                        if (panMag > 0.06f) {
+                            // Smooth raw pan deltas; avoids dt spikes that cause post-release surges.
+                            panDeltaPerEvent = Offset(
+                                x = panDeltaPerEvent.x * 0.75f + pan.x * 0.25f,
+                                y = panDeltaPerEvent.y * 0.75f + pan.y * 0.25f
+                            )
+                        }
+                        lastGestureZoomFactor = zoom
+                        lastGestureAtMs = now
+
+                        panMomentumJob = scope.launch {
+                            val stamp = lastGestureAtMs
+                            delay(24L)
+                            if (stamp != lastGestureAtMs) return@launch
+                            if (kotlin.math.abs(lastGestureZoomFactor - 1f) > 0.03f) return@launch
+                            val velocity = panDeltaPerEvent
+                            if (hypot(velocity.x.toDouble(), velocity.y.toDouble()) < 0.08) {
+                                return@launch
+                            }
+                            val start = panOffset
+                            var coastVector = velocity * 10f
+                            val coastMag = hypot(coastVector.x.toDouble(), coastVector.y.toDouble()).toFloat()
+                            val maxCoast = 220f
+                            if (coastMag > maxCoast && coastMag > 0f) {
+                                val factor = maxCoast / coastMag
+                                coastVector *= factor
+                            }
+                            val target = clampOffset(start + coastVector, scale)
+                            val travel = hypot((target.x - start.x).toDouble(), (target.y - start.y).toDouble())
+                            if (travel < 0.5) return@launch
+
+                            inertiaProgress.snapTo(0f)
+                            inertiaProgress.animateTo(
+                                targetValue = 1f,
+                                animationSpec = tween(durationMillis = 320, easing = LinearOutSlowInEasing)
+                            ) {
+                                val p = value
+                                val current = Offset(
+                                    x = start.x + (target.x - start.x) * p,
+                                    y = start.y + (target.y - start.y) * p
+                                )
+                                panOffset = clampOffset(current, scale)
+                            }
+                            panDeltaPerEvent = Offset.Zero
+                        }
                     }
                 }
                 .pointerInput(uiState.board, scale, panOffset) {
@@ -613,7 +731,24 @@ private fun HeatmapView(
                             val cell = uiState.board[lose][win]
                             if (cell.validScore && cell.label.isNotEmpty()) {
                                 haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                onCellTapped(cell)
+                                val isAlreadyMax = scale >= 8.99f
+                                if (!isAlreadyMax) {
+                                    val targetScale = 9f
+                                    val targetCell = baseCellPx * targetScale
+                                    val centerX = win * targetCell + targetCell / 2f
+                                    val centerY = lose * targetCell + targetCell / 2f
+                                    val rawOffset = Offset(
+                                        x = (plotWidthPx / 2f) - centerX,
+                                        y = (plotHeightPx / 2f) - centerY
+                                    )
+                                    animateViewport(targetScale, clampOffset(rawOffset, targetScale))
+                                    scope.launch {
+                                        delay(140L)
+                                        onCellTapped(cell)
+                                    }
+                                } else {
+                                    onCellTapped(cell)
+                                }
                             }
                         }
                     }
@@ -687,6 +822,8 @@ private fun HeatmapView(
                             visibleColEnd = visibleColEnd,
                             scaledCell = scaledCell,
                             textSizePx = textSizePx,
+                            scale = scale,
+                            gradientType = uiState.gradientType,
                             getCellTextColor = getCellTextColor
                         )
                     }
@@ -713,9 +850,13 @@ private fun DrawScope.drawVisibleCellLabels(
     visibleColEnd: Int,
     scaledCell: Float,
     textSizePx: Float,
+    scale: Float,
+    gradientType: GradientType,
     getCellTextColor: (BoardCell) -> Color
 ) {
     val native = drawContext.canvas.nativeCanvas
+    val showDetailLine = scale >= 4.0f
+    val detailSizePx = max(8f, textSizePx * 0.72f)
     for (r in visibleRowStart..visibleRowEnd) {
         val row = uiState.board[r]
         for (c in visibleColStart..min(visibleColEnd, row.lastIndex)) {
@@ -735,8 +876,27 @@ private fun DrawScope.drawVisibleCellLabels(
                 typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
             }
             val centerX = c * scaledCell + scaledCell / 2f
-            val centerY = r * scaledCell + scaledCell / 2f - (paint.descent() + paint.ascent()) / 2f
+            val scoreOffsetY = if (showDetailLine) scaledCell * 0.12f else 0f
+            val centerY = r * scaledCell + scaledCell / 2f - scoreOffsetY - (paint.descent() + paint.ascent()) / 2f
             native.drawText(cell.label, centerX, centerY, paint)
+
+            if (showDetailLine && cell.occurrences > 0) {
+                val detail = if (gradientType == GradientType.RECENCY) {
+                    "(${cell.lastGame.takeLast(4).toIntOrNull() ?: 1920})"
+                } else {
+                    "(${cell.occurrences})"
+                }
+                val detailPaint = android.graphics.Paint().apply {
+                    color = paint.color
+                    textSize = detailSizePx
+                    isAntiAlias = true
+                    textAlign = android.graphics.Paint.Align.RIGHT
+                    typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+                }
+                val detailX = (c + 1) * scaledCell - max(1f, scaledCell * 0.08f)
+                val detailY = (r + 1) * scaledCell - max(1f, scaledCell * 0.08f)
+                native.drawText(detail, detailX, detailY, detailPaint)
+            }
         }
     }
 }
@@ -791,9 +951,11 @@ private fun BottomControls(
     uiState: ScorigamiUiState,
     onGradientChange: (GradientType) -> Unit,
     onToggleColorMap: () -> Unit,
+    onResetView: () -> Unit,
     minLegend: String,
     maxLegend: String
 ) {
+    val haptics = LocalHapticFeedback.current
     val minLegendWidth = 34.dp
     val maxLegendWidth = 44.dp
     val legendGap = 6.dp
@@ -822,7 +984,10 @@ private fun BottomControls(
                 fontWeight = FontWeight.Bold
             )
 
-            Row(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Spacer(modifier = Modifier.width(segmentedStartOffset))
                 Row(
                     modifier = Modifier
@@ -838,7 +1003,10 @@ private fun BottomControls(
                                 if (isFreq) Color(0xFF6B6E76) else Color.Transparent,
                                 RoundedCornerShape(13.dp)
                             )
-                            .clickable { onGradientChange(GradientType.FREQUENCY) }
+                            .clickable {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onGradientChange(GradientType.FREQUENCY)
+                            }
                             .padding(vertical = 6.dp),
                         contentAlignment = Alignment.Center
                     ) {
@@ -851,12 +1019,40 @@ private fun BottomControls(
                                 if (!isFreq) Color(0xFF6B6E76) else Color.Transparent,
                                 RoundedCornerShape(13.dp)
                             )
-                            .clickable { onGradientChange(GradientType.RECENCY) }
+                            .clickable {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                onGradientChange(GradientType.RECENCY)
+                            }
                             .padding(vertical = 6.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text("Recency", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     }
+                }
+                Spacer(modifier = Modifier.weight(1f))
+                Row(
+                    modifier = Modifier
+                        .clickable {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onResetView()
+                        }
+                        .padding(end = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        "Reset",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1
+                    )
+                    Icon(
+                        imageVector = Icons.Default.GpsFixed,
+                        contentDescription = "Reset view",
+                        tint = Color.White,
+                        modifier = Modifier.size(13.dp)
+                    )
                 }
             }
 
@@ -864,7 +1060,8 @@ private fun BottomControls(
                 Text(
                     minLegend,
                     color = Color.White,
-                    fontSize = 13.sp,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.width(minLegendWidth),
                     textAlign = TextAlign.End,
                     maxLines = 1,
@@ -876,7 +1073,8 @@ private fun BottomControls(
                 Text(
                     maxLegend,
                     color = Color.White,
-                    fontSize = 13.sp,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.width(maxLegendWidth),
                     maxLines = 1,
                     overflow = TextOverflow.Clip
@@ -885,7 +1083,10 @@ private fun BottomControls(
                 Row(
                     modifier = Modifier
                         .widthIn(min = 110.dp)
-                        .clickable(onClick = onToggleColorMap)
+                        .clickable {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onToggleColorMap()
+                        }
                         .padding(start = 8.dp, end = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -893,7 +1094,8 @@ private fun BottomControls(
                     Text(
                         "Full Color",
                         color = Color.White,
-                        fontSize = 13.sp,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
                         maxLines = 1
                     )
                     Box(
