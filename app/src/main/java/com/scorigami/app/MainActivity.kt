@@ -1043,7 +1043,7 @@ private fun BottomControls(
                         imageVector = Icons.Default.GpsFixed,
                         contentDescription = "Reset view",
                         tint = Color.White,
-                        modifier = Modifier.size(15.dp)
+                        modifier = Modifier.size(18.dp)
                     )
                 }
             }
