@@ -945,6 +945,8 @@ private fun BottomControls(
     maxLegend: String
 ) {
     val haptics = LocalHapticFeedback.current
+    val controlFontSize = 12.sp
+    val controlFontWeight = FontWeight.SemiBold
     val minLegendWidth = 34.dp
     val maxLegendWidth = 44.dp
     val legendGap = 6.dp
@@ -1021,6 +1023,7 @@ private fun BottomControls(
                 Spacer(modifier = Modifier.weight(1f))
                 Row(
                     modifier = Modifier
+                        .width(86.dp)
                         .clickable {
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             onResetView()
@@ -1032,15 +1035,15 @@ private fun BottomControls(
                     Text(
                         "Reset",
                         color = Color.White,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        fontSize = controlFontSize,
+                        fontWeight = controlFontWeight,
                         maxLines = 1
                     )
                     Icon(
                         imageVector = Icons.Default.GpsFixed,
                         contentDescription = "Reset view",
                         tint = Color.White,
-                        modifier = Modifier.size(13.dp)
+                        modifier = Modifier.size(15.dp)
                     )
                 }
             }
@@ -1049,8 +1052,8 @@ private fun BottomControls(
                 Text(
                     minLegend,
                     color = Color.White,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    fontSize = controlFontSize,
+                    fontWeight = controlFontWeight,
                     modifier = Modifier.width(minLegendWidth),
                     textAlign = TextAlign.End,
                     maxLines = 1,
@@ -1062,8 +1065,8 @@ private fun BottomControls(
                 Text(
                     maxLegend,
                     color = Color.White,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    fontSize = controlFontSize,
+                    fontWeight = controlFontWeight,
                     modifier = Modifier.width(maxLegendWidth),
                     maxLines = 1,
                     overflow = TextOverflow.Clip
@@ -1071,20 +1074,20 @@ private fun BottomControls(
                 Spacer(modifier = Modifier.weight(1f))
                 Row(
                     modifier = Modifier
-                        .widthIn(min = 110.dp)
+                        .width(122.dp)
                         .clickable {
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             onToggleColorMap()
                         }
                         .padding(start = 8.dp, end = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
                         "Full Color",
                         color = Color.White,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        fontSize = controlFontSize,
+                        fontWeight = controlFontWeight,
                         maxLines = 1
                     )
                     Box(
