@@ -26,8 +26,9 @@ android {
         applicationId = "com.scorigami.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
-        versionName = "2.0"
+        //noinspection HighAppVersionCode
+        versionCode = 2026031102
+        versionName = "2.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
