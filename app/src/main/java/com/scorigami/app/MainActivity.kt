@@ -8,9 +8,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.Canvas
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearOutSlowInEasing
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -597,7 +594,6 @@ private fun HeatmapView(
     var lastGestureAtMs by remember { mutableLongStateOf(0L) }
     var panDeltaPerEvent by remember { mutableStateOf(Offset.Zero) }
     var lastGestureZoomFactor by remember { mutableFloatStateOf(1f) }
-    val inertiaProgress = remember { Animatable(1f) }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         val plotWidthPx = with(density) { (maxWidth - axisWidth).toPx().coerceAtLeast(1f) }
@@ -682,36 +678,29 @@ private fun HeatmapView(
 
                         panMomentumJob = scope.launch {
                             val stamp = lastGestureAtMs
-                            delay(24L)
+                            delay(10L)
                             if (stamp != lastGestureAtMs) return@launch
                             if (kotlin.math.abs(lastGestureZoomFactor - 1f) > 0.03f) return@launch
-                            val velocity = panDeltaPerEvent
-                            if (hypot(velocity.x.toDouble(), velocity.y.toDouble()) < 0.08) {
+                            var delta = panDeltaPerEvent
+                            if (hypot(delta.x.toDouble(), delta.y.toDouble()) < 0.08) {
                                 return@launch
                             }
-                            val start = panOffset
-                            var coastVector = velocity * 10f
-                            val coastMag = hypot(coastVector.x.toDouble(), coastVector.y.toDouble()).toFloat()
-                            val maxCoast = 220f
-                            if (coastMag > maxCoast && coastMag > 0f) {
-                                val factor = maxCoast / coastMag
-                                coastVector *= factor
-                            }
-                            val target = clampOffset(start + coastVector, scale)
-                            val travel = hypot((target.x - start.x).toDouble(), (target.y - start.y).toDouble())
-                            if (travel < 0.5) return@launch
 
-                            inertiaProgress.snapTo(0f)
-                            inertiaProgress.animateTo(
-                                targetValue = 1f,
-                                animationSpec = tween(durationMillis = 320, easing = LinearOutSlowInEasing)
-                            ) {
-                                val p = value
-                                val current = Offset(
-                                    x = start.x + (target.x - start.x) * p,
-                                    y = start.y + (target.y - start.y) * p
-                                )
-                                panOffset = clampOffset(current, scale)
+                            repeat(36) {
+                                val start = panOffset
+                                val next = clampOffset(start + delta, scale)
+                                val moved = next - start
+                                panOffset = next
+
+                                // Pure deceleration: no acceleration phase after finger-up.
+                                delta *= 0.94f
+
+                                val movedMag = hypot(moved.x.toDouble(), moved.y.toDouble())
+                                val deltaMag = hypot(delta.x.toDouble(), delta.y.toDouble())
+                                if (movedMag < 0.05 || deltaMag < 0.05) {
+                                    return@launch
+                                }
+                                delay(16L)
                             }
                             panDeltaPerEvent = Offset.Zero
                         }
