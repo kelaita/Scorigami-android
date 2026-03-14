@@ -24,17 +24,19 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
@@ -297,7 +299,7 @@ class ScorigamiViewModel : ViewModel() {
     }
 
     private fun currentFrequencySaturation(cell: BoardCell): Float {
-        val floor = if (isFrequencyFilterActive()) 0.01f else 0f
+        val floor = 0.01f
         return getSaturation(
             minValue = uiState.selectedFrequencyStartCount,
             maxValue = uiState.selectedFrequencyEndCount,
@@ -1071,9 +1073,8 @@ private fun BottomControls(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(Color.Black)
-                .navigationBarsPadding()
-                .padding(start = sidePadding, end = sidePadding, top = 8.dp, bottom = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+                .padding(start = sidePadding, end = sidePadding, top = 8.dp, bottom = 0.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
         ) {
             Text(
                 text = "Zoom in, then tap for score info",
@@ -1138,7 +1139,7 @@ private fun BottomControls(
                         }
                         .padding(end = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    horizontalArrangement = Arrangement.Start
                 ) {
                     Text(
                         "Reset",
@@ -1147,6 +1148,7 @@ private fun BottomControls(
                         fontWeight = controlFontWeight,
                         maxLines = 1
                     )
+                    Spacer(modifier = Modifier.weight(1f))
                     Icon(
                         imageVector = Icons.Default.GpsFixed,
                         contentDescription = "Reset view",
@@ -1194,7 +1196,7 @@ private fun BottomControls(
                         }
                         .padding(start = 8.dp, end = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.Start
                 ) {
                     Text(
                         "Full Color",
@@ -1203,6 +1205,7 @@ private fun BottomControls(
                         fontWeight = controlFontWeight,
                         maxLines = 1
                     )
+                    Spacer(modifier = Modifier.weight(1f))
                     Box(
                         modifier = Modifier
                             .requiredSize(18.dp)
@@ -1223,16 +1226,19 @@ private fun BottomControls(
             }
             Text(
                 text = if (uiState.gradientType == GradientType.FREQUENCY) {
-                    "Move the sliders to show less or more popular scores"
+                    "Move the sliders to show specific frequencies"
                 } else {
-                    "Move the slider to only show scores since the first year."
+                    "Move the slider to show scores since the selected year"
                 },
                 color = Color.White.copy(alpha = 0.78f),
                 fontSize = 11.sp,
                 textAlign = TextAlign.Center,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 0.dp, bottom = 2.dp)
+                    .padding(top = 0.dp, bottom = 0.dp)
+            )
+            Spacer(
+                modifier = Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars)
             )
         }
     }
