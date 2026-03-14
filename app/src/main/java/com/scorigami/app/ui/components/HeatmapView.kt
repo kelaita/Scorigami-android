@@ -243,7 +243,7 @@ fun HeatmapView(
                     textAlign = android.graphics.Paint.Align.CENTER
                     typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
                 }
-                drawText("Winning Score", size.width / 2f, with(density) { 18.sp.toPx() }, paint)
+                drawText("Winning Score", size.width / 2f, topAxisHeightPx - 56f, paint)
             }
 
             clipRect(left = axisWidthPx, top = topAxisHeightPx, right = size.width, bottom = size.height) {
@@ -404,7 +404,7 @@ private fun DrawScope.drawAxisLabels(
     while (x <= uiState.highestWinningScore) {
         val sx = axisWidthPx + panOffset.x + x * scaledCell + scaledCell / 2f
         if (sx in (axisWidthPx - 35f)..size.width) {
-            native.drawText(x.toString(), sx, topAxisHeightPx - 12f, topPaint)
+            native.drawText(x.toString(), sx, topAxisHeightPx - 4f, topPaint)
         }
         x += axisStep
     }
