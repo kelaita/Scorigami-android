@@ -11,6 +11,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -59,6 +60,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -122,6 +124,8 @@ data class BoardCell(
 enum class GradientType { FREQUENCY, RECENCY }
 enum class ColorMapType { FULL_SPECTRUM, RED_SPECTRUM }
 
+private val FilteredOutRangeColor = Color(0xFF2E2E2E)
+
 data class ScoreDetails(
     val score: String,
     val occurrences: Int,
@@ -138,6 +142,9 @@ data class ScorigamiUiState(
     val highestLosingScore: Int = 0,
     val highestCounter: Int = 1,
     val earliestGameYear: Int = 1920,
+    val selectedFrequencyStartCount: Int = 1,
+    val selectedFrequencyEndCount: Int = 1,
+    val selectedRecencyStartYear: Int = 1920,
     val gradientType: GradientType = GradientType.FREQUENCY,
     val colorMapType: ColorMapType = ColorMapType.FULL_SPECTRUM
 )
@@ -158,6 +165,32 @@ class ScorigamiViewModel : ViewModel() {
         uiState = uiState.copy(gradientType = type)
     }
 
+    fun updateRecencyStartYear(year: Int) {
+        val currentYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+        uiState = uiState.copy(
+            selectedRecencyStartYear = year.coerceIn(uiState.earliestGameYear, currentYear)
+        )
+    }
+
+    fun updateFrequencyRange(startCount: Int, endCount: Int) {
+        val clampedStart = startCount.coerceIn(1, uiState.highestCounter)
+        val clampedEnd = endCount.coerceIn(clampedStart, uiState.highestCounter)
+        uiState = uiState.copy(
+            selectedFrequencyStartCount = clampedStart,
+            selectedFrequencyEndCount = clampedEnd
+        )
+    }
+
+    fun isRecencyFilterActive(): Boolean {
+        return uiState.gradientType == GradientType.RECENCY &&
+            uiState.selectedRecencyStartYear > uiState.earliestGameYear
+    }
+
+    fun isFrequencyFilterActive(): Boolean {
+        return uiState.gradientType == GradientType.FREQUENCY &&
+            (uiState.selectedFrequencyStartCount > 1 || uiState.selectedFrequencyEndCount < uiState.highestCounter)
+    }
+
     fun toggleColorMapType() {
         val next = if (uiState.colorMapType == ColorMapType.FULL_SPECTRUM) {
             ColorMapType.RED_SPECTRUM
@@ -169,27 +202,39 @@ class ScorigamiViewModel : ViewModel() {
 
     fun getMinLegendValue(): String {
         return if (uiState.gradientType == GradientType.FREQUENCY) {
-            "1"
+            uiState.selectedFrequencyStartCount.toString()
         } else {
-            uiState.earliestGameYear.toString()
+            uiState.selectedRecencyStartYear.toString()
         }
     }
 
     fun getMaxLegendValue(): String {
         return if (uiState.gradientType == GradientType.FREQUENCY) {
-            uiState.highestCounter.toString()
+            uiState.selectedFrequencyEndCount.toString()
         } else {
             java.util.Calendar.getInstance().get(java.util.Calendar.YEAR).toString()
         }
     }
 
     fun getCellColor(cell: BoardCell): Color {
-        val sat = if (uiState.gradientType == GradientType.FREQUENCY) {
-            cell.frequencySaturation
-        } else {
-            cell.recencySaturation
+        if (!cell.validScore) {
+            return Color.Black
         }
-        if (!cell.validScore || sat <= 0f) {
+        if (cell.occurrences == 0) {
+            return Color.Black
+        }
+        val sat = if (uiState.gradientType == GradientType.FREQUENCY) {
+            if (!isCellWithinFrequencyRange(cell)) {
+                return FilteredOutRangeColor
+            }
+            currentFrequencySaturation(cell)
+        } else {
+            if (!isCellVisibleForCurrentFilters(cell)) {
+                return FilteredOutRangeColor
+            }
+            currentRecencySaturation(cell)
+        }
+        if (sat <= 0f) {
             return Color.Black
         }
         return if (uiState.colorMapType == ColorMapType.RED_SPECTRUM) {
@@ -202,9 +247,15 @@ class ScorigamiViewModel : ViewModel() {
 
     fun getCellTextColor(cell: BoardCell): Color {
         val sat = if (uiState.gradientType == GradientType.FREQUENCY) {
-            cell.frequencySaturation
+            if (!isCellWithinFrequencyRange(cell)) {
+                return Color.White
+            }
+            currentFrequencySaturation(cell)
         } else {
-            cell.recencySaturation
+            if (!isCellVisibleForCurrentFilters(cell)) {
+                return Color.White
+            }
+            currentRecencySaturation(cell)
         }
         return if (sat < 0.2f || sat > 0.8f || uiState.colorMapType == ColorMapType.RED_SPECTRUM) {
             Color.White
@@ -220,6 +271,39 @@ class ScorigamiViewModel : ViewModel() {
             gamesUrl = cell.gamesUrl,
             lastGame = cell.lastGame,
             plural = cell.plural
+        )
+    }
+
+    private fun isCellWithinFrequencyRange(cell: BoardCell): Boolean {
+        return cell.occurrences > 0 &&
+            cell.occurrences >= uiState.selectedFrequencyStartCount &&
+            cell.occurrences <= uiState.selectedFrequencyEndCount
+    }
+
+    private fun isCellVisibleForCurrentFilters(cell: BoardCell): Boolean {
+        if (!cell.validScore || cell.label.isEmpty()) return false
+        return extractYear(cell.lastGame) >= uiState.selectedRecencyStartYear
+    }
+
+    private fun currentRecencySaturation(cell: BoardCell): Float {
+        val floor = if (isRecencyFilterActive()) 0.01f else 0f
+        return getSaturation(
+            minValue = uiState.selectedRecencyStartYear,
+            maxValue = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR),
+            value = extractYear(cell.lastGame),
+            skewLower = floor,
+            skewUpper = 1f
+        )
+    }
+
+    private fun currentFrequencySaturation(cell: BoardCell): Float {
+        val floor = if (isFrequencyFilterActive()) 0.01f else 0f
+        return getSaturation(
+            minValue = uiState.selectedFrequencyStartCount,
+            maxValue = uiState.selectedFrequencyEndCount,
+            value = cell.occurrences,
+            skewLower = floor,
+            skewUpper = 0.55f
         )
     }
 
@@ -316,7 +400,10 @@ class ScorigamiViewModel : ViewModel() {
             highestWinningScore = highestWinning,
             highestLosingScore = highestLosing,
             highestCounter = highestCounter,
-            earliestGameYear = earliestYear
+            earliestGameYear = earliestYear,
+            selectedFrequencyStartCount = 1,
+            selectedFrequencyEndCount = highestCounter,
+            selectedRecencyStartYear = earliestYear
         )
     }
 
@@ -444,6 +531,8 @@ private fun ScorigamiApp() {
                 uiState = vm.uiState,
                 onGradientChange = vm::setGradientType,
                 onToggleColorMap = vm::toggleColorMapType,
+                onRecencyStartYearChange = vm::updateRecencyStartYear,
+                onFrequencyRangeChange = vm::updateFrequencyRange,
                 onResetView = { resetRequestId += 1 },
                 minLegend = vm.getMinLegendValue(),
                 maxLegend = vm.getMaxLegendValue()
@@ -482,7 +571,11 @@ private fun ScorigamiApp() {
     }
 
     if (selectedScore != null) {
-        ScoreSheet(details = selectedScore!!, onDismiss = { selectedScore = null })
+        ScoreSheet(
+            details = selectedScore!!,
+            isRecencyFilterActive = vm.isRecencyFilterActive(),
+            onDismiss = { selectedScore = null }
+        )
     }
 }
 
@@ -507,7 +600,7 @@ private fun LoadingScreen() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ScoreSheet(details: ScoreDetails, onDismiss: () -> Unit) {
+private fun ScoreSheet(details: ScoreDetails, isRecencyFilterActive: Boolean, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val scroll = rememberScrollState()
     ModalBottomSheet(
@@ -532,12 +625,14 @@ private fun ScoreSheet(details: ScoreDetails, onDismiss: () -> Unit) {
                 modifier = Modifier.fillMaxWidth()
             )
             if (details.occurrences > 0) {
-                Text(
-                    text = "This score has happened ${details.occurrences} time${details.plural}.",
-                    color = Color.White,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+                if (!isRecencyFilterActive) {
+                    Text(
+                        text = "This score has happened ${details.occurrences} time${details.plural}.",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
                 Text(text = "Most recent game:", color = Color(0xFFB0B0B0), fontSize = 14.sp)
                 Text(
                     text = details.lastGame,
@@ -720,8 +815,19 @@ private fun HeatmapView(
                             val cell = uiState.board[lose][win]
                             if (cell.validScore && cell.label.isNotEmpty()) {
                                 haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                val showLabels = scale >= 2.6f && scaledCell >= with(density) { 20.sp.toPx() }
                                 val isAlreadyMax = scale >= 8.99f
-                                if (!isAlreadyMax) {
+                                if (!showLabels) {
+                                    val targetScale = 9f
+                                    val targetCell = baseCellPx * targetScale
+                                    val centerX = win * targetCell + targetCell / 2f
+                                    val centerY = lose * targetCell + targetCell / 2f
+                                    val rawOffset = Offset(
+                                        x = (plotWidthPx / 2f) - centerX,
+                                        y = (plotHeightPx / 2f) - centerY
+                                    )
+                                    animateViewport(targetScale, clampOffset(rawOffset, targetScale))
+                                } else if (!isAlreadyMax) {
                                     val targetScale = 9f
                                     val targetCell = baseCellPx * targetScale
                                     val centerX = win * targetCell + targetCell / 2f
@@ -940,6 +1046,8 @@ private fun BottomControls(
     uiState: ScorigamiUiState,
     onGradientChange: (GradientType) -> Unit,
     onToggleColorMap: () -> Unit,
+    onRecencyStartYearChange: (Int) -> Unit,
+    onFrequencyRangeChange: (Int, Int) -> Unit,
     onResetView: () -> Unit,
     minLegend: String,
     maxLegend: String
@@ -964,8 +1072,8 @@ private fun BottomControls(
                 .fillMaxWidth()
                 .background(Color.Black)
                 .navigationBarsPadding()
-                .padding(start = sidePadding, end = sidePadding, top = sidePadding, bottom = sidePadding + 8.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+                .padding(start = sidePadding, end = sidePadding, top = 8.dp, bottom = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             Text(
                 text = "Zoom in, then tap for score info",
@@ -1060,7 +1168,12 @@ private fun BottomControls(
                     overflow = TextOverflow.Clip
                 )
                 Spacer(modifier = Modifier.width(legendGap))
-                LegendBar(uiState = uiState, modifier = Modifier.width(legendWidth).height(20.dp))
+                LegendBar(
+                    uiState = uiState,
+                    onRecencyStartYearChange = onRecencyStartYearChange,
+                    onFrequencyRangeChange = onFrequencyRangeChange,
+                    modifier = Modifier.width(legendWidth + 16.dp).height(36.dp)
+                )
                 Spacer(modifier = Modifier.width(legendGap))
                 Text(
                     maxLegend,
@@ -1108,40 +1221,227 @@ private fun BottomControls(
                     }
                 }
             }
+            Text(
+                text = if (uiState.gradientType == GradientType.FREQUENCY) {
+                    "Move the sliders to show less or more popular scores"
+                } else {
+                    "Move the slider to only show scores since the first year."
+                },
+                color = Color.White.copy(alpha = 0.78f),
+                fontSize = 11.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 0.dp, bottom = 2.dp)
+            )
         }
     }
 }
 
 @Composable
-private fun LegendBar(uiState: ScorigamiUiState, modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier) {
-        if (uiState.colorMapType == ColorMapType.RED_SPECTRUM) {
-            val slices = 42
-            val w = size.width / slices
-            for (i in 0 until slices) {
-                val sat = ((i + 1) * 2.5f / 100f).coerceIn(0f, 1f)
-                drawRect(
-                    color = lerp(Color(0xFF606060), Color.Red, sat),
-                    topLeft = Offset(i * w, 0f),
-                    size = androidx.compose.ui.geometry.Size(w, size.height)
-                )
+private fun LegendBar(
+    uiState: ScorigamiUiState,
+    onRecencyStartYearChange: (Int) -> Unit,
+    onFrequencyRangeChange: (Int, Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var activeFrequencyHandle by remember { mutableStateOf<Int?>(null) }
+    val currentUiState by rememberUpdatedState(uiState)
+    val currentRecencyChange by rememberUpdatedState(onRecencyStartYearChange)
+    val currentFrequencyChange by rememberUpdatedState(onFrequencyRangeChange)
+    val edgeExtensionPx = with(LocalDensity.current) { 8.dp.toPx() }
+
+    Box(
+        modifier = modifier
+            .pointerInput(Unit) {
+                detectTapGestures { tap ->
+                    val state = currentUiState
+                    if (state.gradientType == GradientType.RECENCY) {
+                        val width = (size.width.toFloat() - edgeExtensionPx * 2f).coerceAtLeast(1f)
+                        val localX = (tap.x - edgeExtensionPx).coerceIn(0f, width)
+                        val currentYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+                        val range = max(1, currentYear - state.earliestGameYear)
+                        val fraction = (localX / width).coerceIn(0f, 1f)
+                        currentRecencyChange(state.earliestGameYear + (range * fraction).toInt())
+                    }
+                }
             }
-        } else {
-            val grad = listOf(Color.Blue, Color.Cyan, Color.Green, Color.Yellow, Color.Red)
-            val step = size.width / (grad.size - 1)
-            for (i in 0 until grad.size - 1) {
-                drawRect(
-                    brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
-                        colors = listOf(grad[i], grad[i + 1]),
-                        startX = i * step,
-                        endX = (i + 1) * step
-                    ),
-                    topLeft = Offset(i * step, 0f),
-                    size = androidx.compose.ui.geometry.Size(step, size.height)
-                )
+            .pointerInput(Unit) {
+                detectDragGestures(
+                    onDragStart = { offset ->
+                        val state = currentUiState
+                        if (state.gradientType == GradientType.FREQUENCY) {
+                            val width = (size.width.toFloat() - edgeExtensionPx * 2f).coerceAtLeast(1f)
+                            val totalBuckets = max(1, state.highestCounter)
+                            val lowerX = edgeExtensionPx + width * ((state.selectedFrequencyStartCount - 1).toFloat() / totalBuckets.toFloat())
+                            val upperX = edgeExtensionPx + width * (state.selectedFrequencyEndCount.toFloat() / totalBuckets.toFloat())
+                            val legendHeight = 20.dp.toPx()
+                            val knobRadius = 4.dp.toPx()
+                            val knobCenterY = legendHeight + knobRadius
+                            val lineTouchHalfWidth = 12.dp.toPx()
+                            val lowerDistance = hypot((offset.x - lowerX).toDouble(), (offset.y - knobCenterY).toDouble()).toFloat()
+                            val upperDistance = hypot((offset.x - upperX).toDouble(), (offset.y - knobCenterY).toDouble()).toFloat()
+                            val lowerOnLine = offset.y <= legendHeight && kotlin.math.abs(offset.x - lowerX) <= lineTouchHalfWidth
+                            val upperOnLine = offset.y <= legendHeight && kotlin.math.abs(offset.x - upperX) <= lineTouchHalfWidth
+                            activeFrequencyHandle = when {
+                                (lowerDistance <= knobRadius * 2f || lowerOnLine) &&
+                                    (upperDistance <= knobRadius * 2f || upperOnLine) ->
+                                    if (lowerDistance <= upperDistance) 0 else 1
+                                lowerDistance <= knobRadius * 2f || lowerOnLine -> 0
+                                upperDistance <= knobRadius * 2f || upperOnLine -> 1
+                                else -> if (lowerDistance <= upperDistance) 0 else 1
+                            }
+                        }
+                    },
+                    onDragEnd = { activeFrequencyHandle = null },
+                    onDragCancel = { activeFrequencyHandle = null }
+                ) { change, _ ->
+                    val state = currentUiState
+                    val width = (size.width.toFloat() - edgeExtensionPx * 2f).coerceAtLeast(1f)
+                    val x = (change.position.x - edgeExtensionPx).coerceIn(0f, width)
+                    if (state.gradientType == GradientType.RECENCY) {
+                        val currentYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+                        val range = max(1, currentYear - state.earliestGameYear)
+                        val fraction = (x / width).coerceIn(0f, 1f)
+                        currentRecencyChange(state.earliestGameYear + (range * fraction).toInt())
+                    } else {
+                        val totalBuckets = max(1, state.highestCounter)
+                        if (activeFrequencyHandle == 0) {
+                            val nextStart = ((x / width).coerceIn(0f, 1f) * totalBuckets).toInt() + 1
+                            currentFrequencyChange(
+                                nextStart.coerceIn(1, state.selectedFrequencyEndCount),
+                                state.selectedFrequencyEndCount
+                            )
+                        } else {
+                            val nextEnd = kotlin.math.ceil(((x / width).coerceIn(0f, 1f) * totalBuckets).toDouble()).toInt().coerceAtLeast(1)
+                            currentFrequencyChange(
+                                state.selectedFrequencyStartCount,
+                                nextEnd.coerceIn(state.selectedFrequencyStartCount, state.highestCounter)
+                            )
+                        }
+                    }
+                    change.consume()
+                }
+            }
+    ) {
+        Canvas(modifier = Modifier.matchParentSize()) {
+            drawLegendFill(uiState, edgeExtensionPx)
+            drawRect(
+                color = Color.White,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1f),
+                topLeft = Offset(edgeExtensionPx, 0f),
+                size = androidx.compose.ui.geometry.Size(size.width - edgeExtensionPx * 2f, 20.dp.toPx())
+            )
+            if (uiState.gradientType == GradientType.RECENCY) {
+                drawRecencyMarker(uiState, edgeExtensionPx)
+            } else {
+                drawFrequencyMarkers(uiState, edgeExtensionPx)
             }
         }
     }
+}
+
+private fun DrawScope.drawLegendFill(uiState: ScorigamiUiState, edgeExtensionPx: Float) {
+    val legendHeight = 20.dp.toPx()
+    val barWidth = (size.width - edgeExtensionPx * 2f).coerceAtLeast(1f)
+    if (uiState.gradientType == GradientType.RECENCY && uiState.selectedRecencyStartYear > uiState.earliestGameYear) {
+        val currentYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+        val totalRange = max(1, currentYear - uiState.earliestGameYear).toFloat()
+        val excludedFraction = ((uiState.selectedRecencyStartYear - uiState.earliestGameYear).toFloat() / totalRange).coerceIn(0f, 1f)
+        val excludedWidth = barWidth * excludedFraction
+        drawRect(
+            color = FilteredOutRangeColor,
+            topLeft = Offset(edgeExtensionPx, 0f),
+            size = androidx.compose.ui.geometry.Size(excludedWidth, legendHeight)
+        )
+        drawLegendGradient(uiState, edgeExtensionPx + excludedWidth, barWidth - excludedWidth, legendHeight)
+    } else if (uiState.gradientType == GradientType.FREQUENCY) {
+        val totalBuckets = max(1, uiState.highestCounter).toFloat()
+        val lowerFraction = ((uiState.selectedFrequencyStartCount - 1).toFloat() / totalBuckets).coerceIn(0f, 1f)
+        val upperFraction = (uiState.selectedFrequencyEndCount.toFloat() / totalBuckets).coerceIn(lowerFraction, 1f)
+        val lowerWidth = barWidth * lowerFraction
+        val activeWidth = barWidth * (upperFraction - lowerFraction)
+        val upperWidth = barWidth - lowerWidth - activeWidth
+        drawRect(
+            color = FilteredOutRangeColor,
+            topLeft = Offset(edgeExtensionPx, 0f),
+            size = androidx.compose.ui.geometry.Size(lowerWidth, legendHeight)
+        )
+        drawLegendGradient(uiState, edgeExtensionPx + lowerWidth, activeWidth, legendHeight)
+        drawRect(
+            color = FilteredOutRangeColor,
+            topLeft = Offset(edgeExtensionPx + lowerWidth + activeWidth, 0f),
+            size = androidx.compose.ui.geometry.Size(upperWidth, legendHeight)
+        )
+    } else {
+        drawLegendGradient(uiState, edgeExtensionPx, barWidth, legendHeight)
+    }
+}
+
+private fun DrawScope.drawLegendGradient(
+    uiState: ScorigamiUiState,
+    startX: Float,
+    width: Float,
+    height: Float
+) {
+    if (width <= 0f) return
+    if (uiState.colorMapType == ColorMapType.RED_SPECTRUM) {
+        val slices = 42
+        val w = width / slices
+        for (i in 0 until slices) {
+            val sat = ((i + 1) * 2.5f / 100f).coerceIn(0f, 1f)
+            drawRect(
+                color = lerp(Color(0xFF606060), Color.Red, sat),
+                topLeft = Offset(startX + i * w, 0f),
+                size = androidx.compose.ui.geometry.Size(w, height)
+            )
+        }
+    } else {
+        drawRect(
+            brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
+                colors = listOf(Color.Blue, Color.Cyan, Color.Green, Color.Yellow, Color.Red),
+                startX = startX,
+                endX = startX + width
+            ),
+            topLeft = Offset(startX, 0f),
+            size = androidx.compose.ui.geometry.Size(width, height)
+        )
+    }
+}
+
+private fun DrawScope.drawRecencyMarker(uiState: ScorigamiUiState, edgeExtensionPx: Float) {
+    val currentYear = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR)
+    val range = max(1, currentYear - uiState.earliestGameYear).toFloat()
+    val fraction = ((uiState.selectedRecencyStartYear - uiState.earliestGameYear).toFloat() / range).coerceIn(0f, 1f)
+    val barWidth = (size.width - edgeExtensionPx * 2f).coerceAtLeast(1f)
+    drawMarkerAt(edgeExtensionPx + (barWidth * fraction))
+}
+
+private fun DrawScope.drawFrequencyMarkers(uiState: ScorigamiUiState, edgeExtensionPx: Float) {
+    val totalBuckets = max(1, uiState.highestCounter).toFloat()
+    val barWidth = (size.width - edgeExtensionPx * 2f).coerceAtLeast(1f)
+    val lowerX = edgeExtensionPx + barWidth * ((uiState.selectedFrequencyStartCount - 1).toFloat() / totalBuckets)
+    val upperX = edgeExtensionPx + barWidth * (uiState.selectedFrequencyEndCount.toFloat() / totalBuckets)
+    drawMarkerAt(lowerX)
+    drawMarkerAt(upperX)
+}
+
+private fun DrawScope.drawMarkerAt(x: Float) {
+    val legendHeight = 20.dp.toPx()
+    val lineWidth = 2f
+    val knobRadius = 4.dp.toPx()
+    val clampedX = x.coerceIn(0f, size.width)
+    val lineLeft = (clampedX - lineWidth / 2f).coerceIn(0f, size.width - lineWidth)
+    drawRect(
+        color = Color.White,
+        topLeft = Offset(lineLeft, 0f),
+        size = androidx.compose.ui.geometry.Size(lineWidth, legendHeight)
+    )
+    drawCircle(
+        color = Color.White,
+        radius = knobRadius,
+        center = Offset(clampedX, legendHeight + knobRadius)
+    )
 }
 
 @Composable
