@@ -75,7 +75,7 @@ fun ScorigamiApp() {
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(top = 4.dp)
+                    .padding(top = 0.dp)
             ) {
                 Row(
                     modifier = Modifier
@@ -88,18 +88,18 @@ fun ScorigamiApp() {
                         contentDescription = "Scorigami",
                         modifier = Modifier
                             .weight(1f)
-                            .height(44.dp)
+                            .height(34.dp)
                     )
                     IconButton(onClick = { showAbout = true }, modifier = Modifier.size(42.dp)) {
                         Icon(
                             Icons.Default.Info,
                             contentDescription = "About",
                             tint = Color(0xFF2196F3),
-                            modifier = Modifier.size(30.dp)
+                            modifier = Modifier.size(28.dp)
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(0.dp))
             }
         },
         bottomBar = {
