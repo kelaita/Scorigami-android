@@ -679,8 +679,8 @@ private fun HeatmapView(
 ) {
     val density = LocalDensity.current
     val haptics = LocalHapticFeedback.current
-    val axisWidth = 26.dp
-    val topAxisHeight = 42.dp
+    val axisWidth = 34.dp
+    val topAxisHeight = 68.dp
     val baseCellPx = with(density) { 8.dp.toPx() }
 
     var scale by remember { mutableFloatStateOf(1f) }
@@ -1026,7 +1026,7 @@ private fun DrawScope.drawAxisLabels(
     while (x <= uiState.highestWinningScore) {
         val sx = axisWidthPx + panOffset.x + x * scaledCell + scaledCell / 2f
         if (sx in (axisWidthPx - 35f)..size.width) {
-            native.drawText(x.toString(), sx, topAxisHeightPx - 4f, topPaint)
+            native.drawText(x.toString(), sx, topAxisHeightPx - 16f, topPaint)
         }
         x += axisStep
     }
@@ -1036,7 +1036,7 @@ private fun DrawScope.drawAxisLabels(
         val cellCenterY = topAxisHeightPx + panOffset.y + y * scaledCell + scaledCell / 2f
         if (cellCenterY in (topAxisHeightPx - 8f)..size.height) {
             val baselineY = cellCenterY - (leftPaint.descent() + leftPaint.ascent()) / 2f
-            native.drawText(y.toString(), axisWidthPx - 2f, baselineY, leftPaint)
+            native.drawText(y.toString(), axisWidthPx - 20f, baselineY, leftPaint)
         }
         y += axisStep
     }
