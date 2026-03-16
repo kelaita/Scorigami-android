@@ -79,6 +79,10 @@ fun BottomControls(
     val legendGap = 6.dp
     val sidePadding = 10.dp
     val reservedForFullColor = 126.dp
+    val rightControlWidth = 126.dp
+    val rightControlEndPadding = 8.dp
+    val rightControlIconSize = 18.dp
+    val rightControlSpacing = 8.dp
 
     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
         val legendWidth = (maxWidth - (sidePadding * 2) - minLegendWidth - legendGap - maxLegendWidth - legendGap - reservedForFullColor)
@@ -149,14 +153,14 @@ fun BottomControls(
                 Spacer(modifier = Modifier.weight(1f))
                 Row(
                     modifier = Modifier
-                        .width(86.dp)
+                        .width(rightControlWidth)
                         .clickable {
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             onResetView()
                         }
-                        .padding(end = 8.dp),
+                        .padding(end = rightControlEndPadding),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Start
+                    horizontalArrangement = Arrangement.End
                 ) {
                     Text(
                         "Reset",
@@ -165,12 +169,12 @@ fun BottomControls(
                         fontWeight = controlFontWeight,
                         maxLines = 1
                     )
-                    Spacer(modifier = Modifier.weight(1f))
+                    Spacer(modifier = Modifier.width(rightControlSpacing))
                     Icon(
                         imageVector = Icons.Default.GpsFixed,
                         contentDescription = "Reset view",
                         tint = Color.White,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(rightControlIconSize)
                     )
                 }
             }
@@ -206,14 +210,14 @@ fun BottomControls(
                 Spacer(modifier = Modifier.weight(1f))
                 Row(
                     modifier = Modifier
-                        .width(122.dp)
+                        .width(rightControlWidth)
                         .clickable {
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                             onToggleColorMap()
                         }
-                        .padding(start = 8.dp, end = 8.dp),
+                        .padding(end = rightControlEndPadding),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Start
+                    horizontalArrangement = Arrangement.End
                 ) {
                     Text(
                         "Full Color",
@@ -222,10 +226,10 @@ fun BottomControls(
                         fontWeight = controlFontWeight,
                         maxLines = 1
                     )
-                    Spacer(modifier = Modifier.weight(1f))
+                    Spacer(modifier = Modifier.width(rightControlSpacing))
                     Box(
                         modifier = Modifier
-                            .requiredSize(18.dp)
+                            .requiredSize(rightControlIconSize)
                             .aspectRatio(1f)
                             .border(1.dp, Color.White, RoundedCornerShape(2.dp)),
                         contentAlignment = Alignment.Center
