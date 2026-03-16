@@ -44,6 +44,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.scorigami.app.R
 import com.scorigami.app.data.ScoreDetails
@@ -57,6 +60,18 @@ fun ScorigamiApp() {
     var showAbout by remember { mutableStateOf(false) }
     var selectedScore by remember { mutableStateOf<ScoreDetails?>(null) }
     var resetRequestId by remember { mutableIntStateOf(0) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && vm.shouldAutoRefreshOnResume()) {
+                resetRequestId += 1
+                vm.refreshDataInBackground()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     if (vm.uiState.isLoading) {
         LoadingScreen()
@@ -109,7 +124,10 @@ fun ScorigamiApp() {
                 onToggleColorMap = vm::toggleColorMapType,
                 onRecencyStartYearChange = vm::updateRecencyStartYear,
                 onFrequencyRangeChange = vm::updateFrequencyRange,
-                onResetView = { resetRequestId += 1 },
+                onResetView = {
+                    resetRequestId += 1
+                    vm.refreshDataInBackground()
+                },
                 minLegend = vm.getMinLegendValue(),
                 maxLegend = vm.getMaxLegendValue()
             )

@@ -4,7 +4,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import android.content.Context
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.scorigami.app.data.BoardCell
 import com.scorigami.app.data.ColorMapType
@@ -19,16 +21,20 @@ import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
 import java.net.URL
 
-class ScorigamiViewModel : ViewModel() {
+class ScorigamiViewModel(application: Application) : AndroidViewModel(application) {
     var uiState by mutableStateOf(ScorigamiUiState())
         private set
 
     private val sourceUrl = "https://pomace.net/scores.html"
     private val gameUrlTemplate = "https://www.pro-football-reference.com/boxscores/game_scores_find.cgi?pts_win=WWWW&pts_lose=LLLL"
     private val fullSpectrumPalette = buildFullSpectrumPalette()
+    private val prefs = application.getSharedPreferences("scorigami_refresh", Context.MODE_PRIVATE)
+    private val refreshIntervalMs = 24L * 60L * 60L * 1000L
+    private val lastPollKey = "last_poll_at"
+    private var isRefreshingData = false
 
     init {
-        loadScores()
+        loadScores(showLoading = true, isBackgroundRefresh = false)
     }
 
     fun setGradientType(type: GradientType) {
@@ -68,6 +74,18 @@ class ScorigamiViewModel : ViewModel() {
             ColorMapType.FULL_SPECTRUM
         }
         uiState = uiState.copy(colorMapType = next)
+    }
+
+    fun refreshDataInBackground() {
+        if (isRefreshingData) return
+        loadScores(showLoading = uiState.board.isEmpty(), isBackgroundRefresh = true)
+    }
+
+    fun shouldAutoRefreshOnResume(nowMs: Long = System.currentTimeMillis()): Boolean {
+        if (uiState.isLoading || isRefreshingData) return false
+        val lastPollAt = prefs.getLong(lastPollKey, 0L)
+        if (lastPollAt <= 0L) return false
+        return nowMs - lastPollAt >= refreshIntervalMs
     }
 
     fun getMinLegendValue(): String {
@@ -177,20 +195,50 @@ class ScorigamiViewModel : ViewModel() {
         )
     }
 
-    private fun loadScores() {
+    private fun loadScores(showLoading: Boolean, isBackgroundRefresh: Boolean) {
+        if (isRefreshingData) return
+        isRefreshingData = true
         viewModelScope.launch {
-            uiState = uiState.copy(isLoading = true, error = null)
+            if (showLoading) {
+                uiState = uiState.copy(isLoading = true, error = null)
+            }
             try {
                 val parsed = withContext(Dispatchers.IO) {
                     parseGames(URL(sourceUrl).readText())
                 }
                 val boardData = buildBoard(parsed)
-                uiState = boardData.copy(isLoading = false)
-            } catch (e: Exception) {
-                uiState = uiState.copy(
+                val nextFrequencyStart = uiState.selectedFrequencyStartCount.coerceIn(1, boardData.highestCounter)
+                val nextFrequencyEnd = if (uiState.selectedFrequencyEndCount >= uiState.highestCounter) {
+                    boardData.highestCounter
+                } else {
+                    uiState.selectedFrequencyEndCount.coerceIn(nextFrequencyStart, boardData.highestCounter)
+                }
+                val nextRecencyStartYear = if (uiState.selectedRecencyStartYear <= uiState.earliestGameYear) {
+                    boardData.earliestGameYear
+                } else {
+                    uiState.selectedRecencyStartYear.coerceIn(boardData.earliestGameYear, java.util.Calendar.getInstance().get(java.util.Calendar.YEAR))
+                }
+                uiState = boardData.copy(
                     isLoading = false,
-                    error = "Unable to load score data. Check internet connection and try again."
+                    error = null,
+                    gradientType = uiState.gradientType,
+                    colorMapType = uiState.colorMapType,
+                    selectedFrequencyStartCount = nextFrequencyStart,
+                    selectedFrequencyEndCount = nextFrequencyEnd,
+                    selectedRecencyStartYear = nextRecencyStartYear
                 )
+            } catch (e: Exception) {
+                if (showLoading || !isBackgroundRefresh || uiState.board.isEmpty()) {
+                    uiState = uiState.copy(
+                        isLoading = false,
+                        error = "Unable to load score data. Check internet connection and try again."
+                    )
+                } else {
+                    uiState = uiState.copy(isLoading = false)
+                }
+            } finally {
+                prefs.edit().putLong(lastPollKey, System.currentTimeMillis()).apply()
+                isRefreshingData = false
             }
         }
     }
