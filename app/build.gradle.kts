@@ -20,15 +20,15 @@ val hasReleaseSigning =
 
 android {
     namespace = "com.scorigami.app"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.scorigami.app"
         minSdk = 24
-        targetSdk = 35
+        targetSdk = 36
         //noinspection HighAppVersionCode
-        versionCode = 2026031701
-        versionName = "2.4"
+        versionCode = 2026090702
+        versionName = "2.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -59,12 +59,13 @@ android {
             isJniDebuggable = false
             if (hasReleaseSigning) {
                 signingConfig = signingConfigs.getByName("release")
+            } else {
+                signingConfig = signingConfigs.getByName("debug")
             }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
